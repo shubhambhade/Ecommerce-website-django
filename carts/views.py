@@ -3,7 +3,8 @@ from django.shortcuts import render, redirect,get_object_or_404
 from store.models import Product
 from .models import Cart, CartItem
 
-from django.http import HttpResponse
+
+from django.core.exceptions import ObjectDoesNotExist
 
 #Create your views here.
 def _cart_id(request):
@@ -22,16 +23,69 @@ def add_cart(request, product_id):
     # Get or create a CartItem
     cart_item, created = CartItem.objects.get_or_create(product=product, cart=cart)
 
-    if not created:  # if the CartItem already existed
+    if not created:  
+        # If CartItem already existed
         cart_item.quantity += 1
-        cart_item.save()
+    else:
+        # If created for the first time
+        cart_item.quantity = 1
 
-    return HttpResponse(cart_item.product)
-    exit()
+    cart_item.save()
+
     return redirect('cart')
 
-def cart(request):
-    return render(request,'store/cart.html')
+
+def remove_cart(request, product_id):
+    cart = Cart.objects.get(cart_id=_cart_id(request))
+    product = get_object_or_404(Product, id=product_id)
+
+    try:
+        cart_item = CartItem.objects.get(product=product, cart=cart)
+        if cart_item.quantity > 1:
+            cart_item.quantity -= 1
+            cart_item.save()   # save cart_item, not cart
+        else:
+            cart_item.delete()
+    except ObjectDoesNotExist:   #missing item gracefully
+        pass
+
+    return redirect('cart')
+
+
+def remove_cart_item(request, product_id):
+    cart =  Cart.objects.get(cart_id =  _cart_id(request))
+    product =  get_object_or_404(Product, id = product_id)
+    cart_item = CartItem.objects.get( product = product,cart=cart)
+
+    cart_item.delete()
+    return redirect('cart')
+
+
+def cart(request, total = 0, quantity = 0, cart_items = None):
+    tax = 0
+    grand_total = 0
+    try:
+        cart = Cart.objects.get(cart_id = _cart_id(request))
+        cart_items = CartItem.objects.filter(cart = cart, is_active = True)
+
+        for cart_item in cart_items:
+            total += (cart_item.product.price * cart_item.quantity)
+            quantity += cart_item.quantity
+        
+        tax = (5 * total) / 100
+        grand_total = total + tax
+
+    except ObjectDoesNotExist:
+        pass
+
+    context={
+        'total':total,
+        'quantity':quantity,
+        'cart_items':cart_items,
+        'tax':tax,
+        'grand_total':grand_total
+    }
+    return render(request,'store/cart.html',context)
 
 
 
